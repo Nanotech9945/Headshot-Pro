@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "Represents a user in the system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "credits": { "type": "number", "description": "Number of headshot generations remaining" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "generation": {
+      "title": "Generation",
+      "description": "A generated headshot result.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "image": { "type": "string", "description": "Base64 or URL of the image" },
+        "style": { "type": "string" },
+        "aspectRatio": { "type": "number" },
+        "filters": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "image", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "user",
+      "description": "User profile data"
+    },
+    "users/{userId}/generations/{generationId}": {
+      "schema": "generation",
+      "description": "User's headshot generation history"
+    }
+  }
+}
