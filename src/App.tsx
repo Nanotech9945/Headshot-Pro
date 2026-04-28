@@ -18,6 +18,7 @@ import {
   Folder, 
   CreditCard, 
   Settings, 
+  Settings2,
   HelpCircle,
   CheckCircle2,
   Trash2,
@@ -26,14 +27,25 @@ import {
   User as UserIcon,
   Eye,
   EyeOff,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Scissors,
+  Users,
+  Ban,
+  Shield,
+  ShieldAlert,
+  Search,
+  Activity,
+  UserRound,
+  Wand2,
+  CloudUpload
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 
 import Cropper from 'react-easy-crop';
 import getCroppedImg, { applyFilters, optimizeImage } from './lib/cropUtils';
+import AdvancedEditor from './components/Editor';
 
-import { auth, db } from './lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from './lib/firebase';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -46,6 +58,7 @@ import {
 } from 'firebase/auth';
 import { 
   collection, 
+  collectionGroup,
   query, 
   where, 
   orderBy, 
@@ -54,6 +67,7 @@ import {
   deleteDoc, 
   doc, 
   setDoc,
+  getDoc,
   serverTimestamp,
   getDocFromServer
 } from 'firebase/firestore';
@@ -70,40 +84,330 @@ declare global {
 const STYLES = [
   {
     id: 'corporate',
-    name: 'Corporate',
-    description: 'Sharp, trustworthy, executive.',
+    name: 'Corporate Executive',
+    description: 'Sharp, trustworthy, and commanding executive presence.',
     image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDll-GxjL4m9J-EluKipUUSwUSw1FdTmQ9jJ5hDy2N5o-JQmculHem3Af94PEdajc85eF6CpxJDRfUjAhT4RKYs7V68HYz2K5JOpkhDgDBu98IRxsAcWTO4wUTUTN8PLTf8lE39BeXjq_h2Qu5HbXs7qoUe5MsHsgzeGYzwpc97O1NSm4qPRnYS0ipVeSr9IYir6jBHY4aWuruLUeS7O-qDO9gFTFKYGqKxuewjpyJtI25tgtoquIMdB0pKAnSoIwxd5XDqEE7QTaL8',
-    prompt: 'A professional corporate headshot with a clean, solid grey studio backdrop. The person is wearing professional business attire (suit or blazer). High-end studio lighting, sharp focus, 8k resolution.'
+    prompt: 'A professional high-end corporate headshot. The subject has a confident and neutral executive facial expression, maintaining their original identity. They are wearing a bespoke charcoal suit with a crisp white shirt and silk tie (or elegant professional blazer). Clean, minimalist medium-grey studio background with professional three-point lighting. 8k resolution, photorealistic, sharp focus on eyes, shallow depth of field.'
   },
   {
     id: 'tech',
-    name: 'Modern Tech',
-    description: 'Minimalist, clean, approachable.',
+    name: 'Modern Startup',
+    description: 'Minimalist, approachable, and innovative tech vibe.',
     image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDAsv_2SRL7AglpZGhJd8eQVtPMzzL4SJabbX_osAxR5g1SHloaDk4-Qhiddr8Tro4LkMDAdiynSknoU_F-_bez4En-XLCLSXcN1ptmq2SlbDxjWFQ35bIVmLAoXrv7AeKX4_1j9CN6EAgVFNN9FHOSZckBaZJ6guouncN2Rggmo2Y2nrLBY7Os4sjBescMj2JTb8Nl6tXoZKbiwKWmJ_h4b2VzxEVRYQDtrB-L67lTsVlDQuhs-YEhBQqbW29dtz6R86NAoPcWriWf',
-    prompt: 'A professional headshot in a modern tech office environment. Softly blurred background with glass walls and plants. The person is wearing business casual attire. Natural but professional lighting, high-end photography.'
+    prompt: 'A sleek professional headshot in a bright, modern tech office. The subject maintains their original facial expression and features. Background features soft-focus glass partitions, lush indoor plants, and natural light beams. Subject is wearing premium business casual attire (merino wool sweater or light blazer). Natural morning lighting, high-end commercial photography style, ultra-sharp detail.'
   },
   {
     id: 'creative',
-    name: 'Creative',
-    description: 'Dynamic, bold, expressive.',
+    name: 'Creative Studio',
+    description: 'Dynamic, artistic, and expressive professional look.',
     image: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBqKtrJMb4k_19uD3WS2Zab54be1BgxYhXWjd8hJu2OmPG9CZ4aT2YAomsByJYP70ABH1NZqWYveGXG9J-B7Wtb_hTzhyPvToo0A5dsY0Lrr1hCyRuSs_dxyeEWpZNkxRgc9DJ-3idvol2Z1fNk5q89R8E3nnszemC23rLjZafyrNyXCDuRGn5jyzaMc5Qwgae2IF8dCWtH-6clrxQIKPwenhrH3kbsNXdFXmpCN6JC9kpC-y8ch0YMt0jf4wXVuWWf_qOJhuEFW9LG',
-    prompt: 'A professional headshot taken with creative, dynamic lighting. Warm tones, high-end magazine style. The person is wearing expressive but professional attire. Artistic but clean composition.'
+    prompt: 'An artistic professional portrait with sophisticated chiaroscuro lighting. Subject retains their authentic facial expression and identity. Warm, rich earth tones in the atmosphere. Wearing high-quality textured creative professional attire. Soft, warm studio backlight creating a subtle rim light effect. High-end editorial magazine quality, detailed skin textures, masterful color grading.'
   },
   {
     id: 'vintage',
-    name: 'Vintage Glamour',
-    description: 'Timeless, elegant, nostalgic.',
+    name: 'Timeless Elegance',
+    description: 'Classic, sophisticated, and nostalgically cinematic.',
     image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=600&auto=format&fit=crop',
-    prompt: 'A professional vintage-style glamour headshot. Classic soft cinematic lighting, 1950s aesthetic. Elegant attire, sophisticated atmosphere, grained film texture, masterpiece.'
+    prompt: 'A professional cinematic headshot with a vintage 1950s aesthetic. Authentic facial expression and features are preserved. Classic Hollywood soft-key lighting. Subject wearing elegant period-accurate professional attire. Subtle film grain, rich tonality, timeless atmosphere. Rendered with the quality of a legendary portrait photographer.'
   },
   {
-    id: 'cyberpunk',
-    name: 'Futuristic',
-    description: 'Neon, edgy, high-tech.',
-    image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=600&auto=format&fit=crop',
-    prompt: 'A professional headshot with a futuristic high-tech aesthetic. Subtle blue and magenta neon rim lighting. Minimalist high-tech background. Sharp focus, ultra-modern attire, cinematic atmosphere.'
+    id: 'outdoors',
+    name: 'Natural Professional',
+    description: 'Authentic, outdoor, and naturally lit professional portrait.',
+    image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=600&auto=format&fit=crop',
+    prompt: 'A high-end professional outdoor headshot during the golden hour. Authentic facial expression maintained. Background is a beautiful, softly blurred natural setting with warm sunlight. Subject wearing high-quality outdoor-appropriate professional clothing. Sharp detail on the subject with creamy bokeh background, stunning natural light.'
+  },
+  {
+    id: 'model',
+    name: 'Model Folio',
+    description: 'High-fashion, dramatic, striking.',
+    image: 'https://images.unsplash.com/photo-1488161628813-04466f872be2?q=80&w=600&auto=format&fit=crop',
+    prompt: 'A high-fashion model portfolio headshot. Strong directional lighting, moody shadows. Wearing editorial fashion attire. Striking, high-impact aesthetic. Master portrait photography.'
   }
 ];
+
+const BACKGROUNDS = [
+  { id: 'office', name: 'Modern Office', image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=400&auto=format&fit=crop' },
+  { id: 'highrise', name: 'Elite Highrise', image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=400&auto=format&fit=crop' },
+  { id: 'studio', name: 'Neutral Studio', image: 'https://images.unsplash.com/photo-1598331668826-20cecc596b86?q=80&w=400&auto=format&fit=crop' },
+  { id: 'penthouse', name: 'Exec Penthouse', image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=400&auto=format&fit=crop' },
+  { id: 'loft', name: 'Industrial Loft', image: 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?q=80&w=400&auto=format&fit=crop' },
+  { id: 'library', name: 'Academic Library', image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?q=80&w=400&auto=format&fit=crop' },
+  { id: 'medical', name: 'Modern Medical', image: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=400&auto=format&fit=crop' },
+  { id: 'lab', name: 'Innovation Lab', image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?q=80&w=400&auto=format&fit=crop' },
+  { id: 'terrace', name: 'Skyline Terrace', image: 'https://images.unsplash.com/photo-1519710192704-742913539415?q=80&w=400&auto=format&fit=crop' },
+  { id: 'boardroom', name: 'Executive Board', image: 'https://images.unsplash.com/photo-1431540015161-0bf868a2d407?q=80&w=400&auto=format&fit=crop' },
+  { id: 'minimal', name: 'Minimalist Wall', image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?q=80&w=400&auto=format&fit=crop' },
+  { id: 'gallery', name: 'Art Gallery', image: 'https://images.unsplash.com/photo-1518998053502-517cb83cca26?q=80&w=400&auto=format&fit=crop' },
+  { id: 'luxury-lobby', name: 'Luxury Lobby', image: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?q=80&w=400&auto=format&fit=crop' },
+  { id: 'glass-office', name: 'Glass Office', image: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?q=80&w=400&auto=format&fit=crop' },
+  { id: 'high-retail', name: 'High-End Retail', image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=400&auto=format&fit=crop' },
+  { id: 'rooftop', name: 'Corporate Rooftop', image: 'https://images.unsplash.com/photo-1517502884422-41eaead166d4?q=80&w=400&auto=format&fit=crop' },
+];
+
+function LimitItem({ icon, label, value, color }: { icon: React.ReactNode, label: string, value: string, color: string }) {
+  const colorMap: Record<string, string> = {
+    emerald: 'text-emerald-400 bg-emerald-500/10',
+    blue: 'text-blue-400 bg-blue-500/10',
+    purple: 'text-purple-400 bg-purple-500/10'
+  };
+  
+  return (
+    <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl group hover:border-white/10 transition-all">
+      <div className="flex items-center gap-3">
+        <div className={`p-2 rounded-xl ${colorMap[color]}`}>
+          {icon}
+        </div>
+        <span className="text-xs font-bold text-zinc-300 uppercase tracking-tight">{label}</span>
+      </div>
+      <span className="text-xs font-black text-white">{value}</span>
+    </div>
+  );
+}
+
+function AdminDashboard({ setError }: { setError: (err: { title: string, message: string }) => void }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [globalHeadshots, setGlobalHeadshots] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingGenerations, setLoadingGenerations] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUsers(items);
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    
+    try {
+      const q = query(collectionGroup(db, 'headshots'), orderBy('timestamp', 'desc'));
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setGlobalHeadshots(items.slice(0, 12));
+        setLoadingGenerations(false);
+      }, (err) => {
+        console.error("Global headshots query failed (likely missing index):", err);
+        setError({
+          title: "Database Index Required",
+          message: "The global feed requires a Firestore index. If you are an admin, check the browser console for a link to create it, or wait for automatic indexing."
+        });
+        setLoadingGenerations(false);
+      });
+    } catch (err) {
+      console.error("Error setting up global headshots listener:", err);
+      setLoadingGenerations(false);
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  const toggleBlockUser = async (user: any) => {
+    // Prevent blocking oneself
+    if (user.id === auth.currentUser?.uid || user.email === 't19788994@gmail.com') {
+      setError({
+        title: "Action Restricted",
+        message: "Administrators cannot be blocked to prevent accidental loss of management access."
+      });
+      return;
+    }
+
+    const newStatus = user.status === 'blocked' ? 'active' : 'blocked';
+    try {
+      await setDoc(doc(db, 'users', user.id), { 
+        status: newStatus,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filteredUsers = users.filter(u => 
+    u.email?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    u.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.uid?.includes(searchQuery)
+  );
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-16 py-12"
+    >
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-zinc-100 pb-12">
+        <div className="space-y-2">
+          <h2 className="text-5xl font-black uppercase tracking-tighter italic leading-none">Command <span className="text-primary italic">Center</span></h2>
+          <p className="text-zinc-500 font-medium">Manage elite members and oversee global generation activity.</p>
+        </div>
+        <div className="relative group min-w-[300px]">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-primary transition-colors" />
+          <input 
+            type="text"
+            placeholder="Identity Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-6 py-4 bg-zinc-50 border border-zinc-100 rounded-2xl outline-none focus:border-primary/30 transition-all font-medium text-sm"
+          />
+        </div>
+      </div>
+
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-zinc-100 shadow-xl space-y-2">
+          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Global Partners</div>
+          <div className="text-4xl font-black text-on-surface tracking-tighter">{users.length}</div>
+        </div>
+        <div className="bg-white p-8 rounded-[2.5rem] border border-zinc-100 shadow-xl space-y-2">
+          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Total Portals</div>
+          <div className="text-4xl font-black text-primary tracking-tighter">{globalHeadshots.length}+</div>
+        </div>
+        <div className="bg-white p-8 rounded-[2.5rem] border border-zinc-100 shadow-xl space-y-2">
+          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Active Status</div>
+          <div className="text-4xl font-black text-emerald-500 tracking-tighter">
+            {users.filter(u => u.status !== 'blocked').length}
+          </div>
+        </div>
+        <div className="bg-white p-8 rounded-[2.5rem] border border-zinc-100 shadow-xl space-y-2">
+          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Restricted</div>
+          <div className="text-4xl font-black text-red-500 tracking-tighter">
+             {users.filter(u => u.status === 'blocked').length}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-8">
+        <div className="flex items-center gap-3">
+          <Users className="w-6 h-6 text-primary" />
+          <h3 className="text-xl font-black uppercase tracking-tight">Member Registry</h3>
+        </div>
+        <div className="bg-white border border-zinc-100 rounded-[2.5rem] overflow-hidden shadow-2xl">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                <th className="px-8 py-6 text-left text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Member</th>
+                <th className="px-8 py-6 text-left text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Credits</th>
+                <th className="px-8 py-6 text-left text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Joined</th>
+                <th className="px-8 py-6 text-left text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Status</th>
+                <th className="px-8 py-6 text-right text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto mb-4" />
+                    <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Hydrating Members List...</p>
+                  </td>
+                </tr>
+              ) : filteredUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-zinc-50/50 transition-colors group">
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-zinc-900 rounded-2xl overflow-hidden shadow-lg border-2 border-white">
+                        {user.photoURL ? (
+                          <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-white font-bold bg-primary uppercase">
+                            {user.displayName?.[0] || user.email?.[0]}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm text-on-surface">{user.displayName || 'Unnamed Partner'}</div>
+                        <div className="text-xs text-zinc-400 font-mono">{user.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-primary rounded-full text-[10px] font-black uppercase tracking-wider">
+                      <Sparkles className="w-3 h-3" />
+                      {user.credits || 0}
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="text-xs font-bold text-zinc-500 uppercase tracking-tight">
+                      {user.createdAt?.toDate().toLocaleDateString() || 'N/A'}
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <span className={`inline-flex px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                      user.status === 'blocked' 
+                        ? 'bg-red-50 text-red-500' 
+                        : 'bg-emerald-50 text-emerald-500'
+                    }`}>
+                      {user.status || 'active'}
+                    </span>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <button 
+                      onClick={() => toggleBlockUser(user)}
+                      disabled={user.email === 't19788994@gmail.com'}
+                      className={`p-3 rounded-2xl transition-all shadow-xl hover:scale-110 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 ${
+                        user.status === 'blocked'
+                          ? 'bg-emerald-500 text-white shadow-emerald-500/20'
+                          : 'bg-red-500 text-white shadow-red-500/20'
+                      }`}
+                      title={user.email === 't19788994@gmail.com' ? 'Admin Cannot Be Blocked' : (user.status === 'blocked' ? 'Authorize Member' : 'Suspend Member')}
+                    >
+                      {user.status === 'blocked' ? <Shield className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Global Activity Feed */}
+      <div className="space-y-8">
+        <div className="flex items-center gap-3">
+          <Activity className="w-6 h-6 text-primary" />
+          <h3 className="text-xl font-black uppercase tracking-tight">Recent Global Generations</h3>
+        </div>
+        
+        {loadingGenerations ? (
+          <div className="py-20 text-center bg-white rounded-[2.5rem] border border-zinc-100 shadow-xl">
+             <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto mb-4" />
+             <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Scanning Global Vault...</p>
+          </div>
+        ) : globalHeadshots.length === 0 ? (
+          <div className="py-20 text-center bg-white rounded-[2.5rem] border border-zinc-100 shadow-xl">
+            <ImageIcon className="w-12 h-12 text-zinc-100 mx-auto mb-4" />
+            <p className="text-sm font-bold text-zinc-300 uppercase tracking-widest">No Recent Generations Detected.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+            {globalHeadshots.map((item) => (
+              <motion.div 
+                key={item.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="group relative aspect-[4/5] rounded-3xl overflow-hidden bg-zinc-100 border-2 border-white shadow-lg"
+              >
+                <img src={item.image} alt="" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="text-[10px] font-black text-white uppercase tracking-widest">{item.style}</div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -114,10 +418,40 @@ export default function App() {
   const [authDisplayName, setAuthDisplayName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [showPricing, setShowPricing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'generator' | 'editor' | 'gallery' | 'admin'>('generator');
+  const [showLimitsModal, setShowLimitsModal] = useState(false);
+
+  useEffect(() => {
+    const hasSeen = localStorage.getItem('seen_limits_modal');
+    if (!hasSeen) {
+      setShowLimitsModal(true);
+    }
+  }, []);
+
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotateX = useTransform(y, [-100, 100], [15, -15]);
+  const rotateY = useTransform(x, [-100, 100], [-15, 15]);
+
+  function handleMouse(event: React.MouseEvent) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    x.set(event.clientX - centerX);
+    y.set(event.clientY - centerY);
+  }
+
+  function handleMouseLeave() {
+    x.set(0);
+    y.set(0);
+  }
 
   const [selectedStyle, setSelectedStyle] = useState(STYLES[1]); // Default to Modern Tech
+  const [customBackground, setCustomBackground] = useState<string | null>(null);
+  const [selectedBackgroundId, setSelectedBackgroundId] = useState<string | null>(null);
   const [image, setImage] = useState<string | null>(null);
   const [tempImage, setTempImage] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -142,7 +476,11 @@ export default function App() {
   const [customApiKey, setCustomApiKey] = useState<string>('');
   const [showKeyInput, setShowKeyInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bgInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [history, setHistory] = useState<{
     id: string;
@@ -167,20 +505,54 @@ export default function App() {
     };
     testConnection();
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
+        // Check if admin
+        const adminDocRef = doc(db, 'admins', user.uid);
+        getDoc(adminDocRef)
+          .then(snap => {
+            setIsAdmin(snap.exists() || user.email === 't19788994@gmail.com');
+          })
+          .catch(err => {
+            console.error("Admin check failed:", err);
+            // Fallback to email check if document read fails
+            setIsAdmin(user.email === 't19788994@gmail.com');
+          });
+
         // Fetch credits from Firestore
         const userDocRef = doc(db, 'users', user.uid);
-        onSnapshot(userDocRef, (docSnap) => {
+        onSnapshot(userDocRef, async (docSnap) => {
           if (docSnap.exists()) {
-            setCredits(docSnap.data().credits ?? 0);
+            const userData = docSnap.data();
+            setCredits(userData.credits ?? 0);
+            
+            // Auto-fix if main admin is accidentally blocked
+            const isMainAdmin = user.email === 't19788994@gmail.com';
+            if (isMainAdmin && userData.status === 'blocked') {
+              console.log("Admin detected as blocked. Auto-restoring status...");
+              await setDoc(userDocRef, { 
+                status: 'active',
+                updatedAt: serverTimestamp() 
+              }, { merge: true });
+              return;
+            }
+
+            // Auto logout if blocked (but never for the primary admin)
+            if (userData.status === 'blocked' && !isMainAdmin) {
+              signOut(auth);
+              setError({ title: "Account Blocked", message: "Your account has been suspended by an administrator." });
+            }
           } else {
             setCredits(0);
           }
+        }, (err) => {
+          console.error("Credit snapshot error for user", user.uid, err);
+          handleFirestoreError(err, OperationType.GET, `users/${user.uid}`, user);
         });
       } else {
         setCredits(null);
+        setIsAdmin(false);
       }
     });
     return () => unsubscribe();
@@ -202,7 +574,7 @@ export default function App() {
 
     // 2. If logged in, fetch from Firestore
     const q = query(
-      collection(db, `users/${currentUser.uid}/generations`),
+      collection(db, `users/${currentUser.uid}/headshots`),
       orderBy('timestamp', 'desc')
     );
 
@@ -213,7 +585,8 @@ export default function App() {
       })) as any[];
       setHistory(items);
     }, (err) => {
-      console.error("Firestore history error:", err);
+      console.error("History snapshot error for user", currentUser.uid, err);
+      handleFirestoreError(err, OperationType.GET, `users/${currentUser.uid}/headshots`, currentUser);
     });
 
     return () => unsubscribe();
@@ -237,15 +610,31 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       
-      // Save user to users collection
-      await setDoc(doc(db, 'users', result.user.uid), {
-        uid: result.user.uid,
-        email: result.user.email,
-        displayName: result.user.displayName,
-        photoURL: result.user.photoURL,
-        createdAt: serverTimestamp(),
-        credits: 0 // Default to 0 credits on login
-      }, { merge: true });
+      const userRef = doc(db, 'users', result.user.uid);
+      try {
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          // Initialize new user
+          await setDoc(userRef, {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: result.user.displayName,
+            photoURL: result.user.photoURL,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            credits: 3 // Give 3 free credits to new users as per requirement
+          });
+        } else {
+          // Update existing user profile/last login (merge: true handles fields safely)
+          await setDoc(userRef, {
+            displayName: result.user.displayName,
+            photoURL: result.user.photoURL,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${result.user.uid}`);
+      }
       
       setIsAuthModalOpen(false);
     } catch (err: any) {
@@ -260,13 +649,18 @@ export default function App() {
       if (authMode === 'signup') {
         const result = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
         await updateProfile(result.user, { displayName: authDisplayName });
-        await setDoc(doc(db, 'users', result.user.uid), {
-          uid: result.user.uid,
-          email: result.user.email,
-          displayName: authDisplayName,
-          createdAt: serverTimestamp(),
-          credits: 0
-        });
+        try {
+          await setDoc(doc(db, 'users', result.user.uid), {
+            uid: result.user.uid,
+            email: result.user.email,
+            displayName: authDisplayName,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            credits: 0
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `users/${result.user.uid}`);
+        }
       } else {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
       }
@@ -287,6 +681,8 @@ export default function App() {
       image: optimizedImg,
       style: selectedStyle.id,
       filters: { ...filters },
+      upscaled: isUpscaled,
+      enhanced: isEnhanced,
       aspectRatio: aspectRatio,
       timestamp: currentUser ? serverTimestamp() : Date.now(),
     };
@@ -302,16 +698,18 @@ export default function App() {
       }
 
       try {
-        await addDoc(collection(db, `users/${currentUser.uid}/generations`), {
+        const path = `users/${currentUser.uid}/headshots`;
+        await addDoc(collection(db, path), {
           ...newItem,
           userId: currentUser.uid,
         });
-        // Decrement credits
+        // Decrement credits & Update updatedAt
         await setDoc(doc(db, 'users', currentUser.uid), {
-          credits: (credits ?? 0) - 1
+          credits: (credits ?? 0) - 1,
+          updatedAt: serverTimestamp()
         }, { merge: true });
       } catch (err: any) {
-        console.error("Failed to add to Firestore history:", err);
+        handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}/headshots`);
       }
     } else {
       // Local history fallback
@@ -322,19 +720,22 @@ export default function App() {
   const deleteFromHistory = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (currentUser) {
+      const path = `users/${currentUser.uid}/headshots/${id}`;
       try {
-        await deleteDoc(doc(db, `users/${currentUser.uid}/generations`, id));
+        await deleteDoc(doc(db, path));
       } catch (err) {
-        console.error("Delete error:", err);
+        handleFirestoreError(err, OperationType.DELETE, path);
       }
     } else {
       setHistory(prev => prev.filter(item => item.id !== id));
     }
   };
 
-  const restoreFromHistory = (item: typeof history[0]) => {
+   const restoreFromHistory = (item: any) => {
     setResultImage(item.image);
     setFilters(item.filters);
+    if (item.upscaled !== undefined) setIsUpscaled(item.upscaled);
+    if (item.enhanced !== undefined) setIsEnhanced(item.enhanced);
     const styleObj = STYLES.find(s => s.id === item.style);
     if (styleObj) setSelectedStyle(styleObj);
     
@@ -351,6 +752,18 @@ export default function App() {
     const file = e.target.files?.[0];
     if (file) {
       processFile(file);
+    }
+  };
+
+  const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCustomBackground(reader.result as string);
+        setSelectedBackgroundId('custom');
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -377,6 +790,72 @@ export default function App() {
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+  };
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    
+    const setupCamera = async () => {
+      if (isCameraActive && videoRef.current) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            } 
+          });
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            // Ensure video plays
+            videoRef.current.onloadedmetadata = () => {
+              videoRef.current?.play().catch(console.error);
+            };
+          }
+        } catch (err) {
+          console.error("Camera setup failed:", err);
+          setIsCameraActive(false);
+          setError({ 
+            title: "Camera Error", 
+            message: "Could not access camera. Please check your browser permissions and ensure no other app is using it." 
+          });
+        }
+      }
+    };
+
+    setupCamera();
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isCameraActive]);
+
+  const startCamera = () => {
+    setError(null);
+    setIsCameraActive(true);
+  };
+
+  const stopCamera = () => {
+    const stream = videoRef.current?.srcObject as MediaStream;
+    stream?.getTracks().forEach(track => track.stop());
+    setIsCameraActive(false);
+  };
+
+  const takePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(video, 0, 0);
+      const dataUrl = canvas.toDataURL('image/png');
+      setTempImage(dataUrl);
+      setShowCropper(true);
+      stopCamera();
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -413,139 +892,112 @@ export default function App() {
   const generateHeadshot = async () => {
     if (!image) return;
 
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    if (credits !== null && credits <= 0 && !isAdmin) {
+      setError({
+        title: "No Credits Left",
+        message: "You have used all your generation credits. Please upgrade your plan to continue.",
+        action: "View Pricing"
+      });
+      setShowPricing(true);
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
     setRetryAttempt(0);
 
-    const maxRetries = 3;
-    let attempt = 0;
-
-    const runGeneration = async (): Promise<void> => {
-      try {
-        const apiKey = customApiKey || process.env.GEMINI_API_KEY;
-        
-        if (!apiKey) {
-          throw new Error("No API key found. Please provide your own Gemini API key in settings.");
-        }
-
-        // Apply image filters before sending to AI
-        const filtersToApply = isEnhanced ? filters : {
-          brightness: 100,
-          contrast: 100,
-          saturation: 100,
-          exposure: 100,
-          sharpen: 0,
-          vignette: 0
-        };
-        const filteredImage = await applyFilters(image, filtersToApply);
-        if (!filteredImage) throw new Error("Failed to process image filters.");
-
-        const ai = new GoogleGenAI({ apiKey });
-        
-        const base64Data = filteredImage.split(',')[1];
-        const mimeType = filteredImage.split(';')[0].split(':')[1];
-
-        const upscalePrompt = isUpscaled ? ", ultra high resolution 4K details, crisp sharp textures" : "";
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  data: base64Data,
-                  mimeType: mimeType,
-                },
-              },
-              {
-                text: `Transform this person in the photo into a professional headshot. ${selectedStyle.prompt}${upscalePrompt}. Maintain the person's facial features and identity accurately but enhance the lighting, clothing, and background to match the professional style. Crucially, apply a subtle but distinct professional background blur (bokeh effect) with a shallow depth of field to make the person stand out prominently from the background.`,
-              },
-            ],
-          },
-        });
-
-        let foundImage = false;
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData) {
-            setResultImage(`data:image/png;base64,${part.inlineData.data}`);
-            addToHistory(`data:image/png;base64,${part.inlineData.data}`);
-            foundImage = true;
-            break;
-          }
-        }
-
-        if (!foundImage) {
-          throw new Error("No image was generated. Please try again.");
-        }
-      } catch (err: any) {
-        const errorMessage = err.message || "";
-        const isRetryable = 
-          errorMessage.includes('429') || 
-          errorMessage.toLowerCase().includes('quota') ||
-          errorMessage.includes('503') ||
-          errorMessage.includes('504') ||
-          errorMessage.includes('502') ||
-          errorMessage.includes('fetch') ||
-          errorMessage.includes('NetworkError');
-
-        if (attempt < maxRetries && isRetryable) {
-          attempt++;
-          setRetryAttempt(attempt);
-          // Exponential backoff: 1s, 2s, 4s
-          const delay = Math.pow(2, attempt - 1) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return runGeneration();
-        }
-        throw err;
-      }
-    };
-
     try {
-      await runGeneration();
-    } catch (err: any) {
-      console.error("Generation error:", err);
-      const errorMessage = err.message || "";
-      
-      if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('quota')) {
-        setError({
-          title: "Quota Exceeded",
-          message: attempt > 0 ? `Failed after ${attempt} retries. The free tier limit is still active.` : "The shared free tier limit for Gemini has been reached for the moment.",
-          action: "Please wait a minute, or add your own API Key in settings to enjoy unlimited generation."
-        });
-      } else if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('invalid')) {
-        setError({
-          title: "Invalid API Key",
-          message: "The API key provided appears to be invalid or has been revoked.",
-          action: "Please check your key in the settings menu and ensure it belongs to the correct project."
-        });
-      } else if (errorMessage.toLowerCase().includes('safety')) {
-        setError({
-          title: "Content Filtered",
-          message: "The AI safety filters were triggered by this image or the requested transformation.",
-          action: "Try using a different photo with a clear, unobstructed view of your face."
-        });
-      } else if (errorMessage.includes('fetch') || errorMessage.includes('NetworkError')) {
-        setError({
-          title: "Connection Lost",
-          message: attempt > 0 ? `Connection failed after ${attempt} attempts.` : "We couldn't connect to the AI studio services. Please check your internet connection.",
-          action: "Verify your network and try again in a few moments."
-        });
-      } else if (errorMessage.includes('503') || errorMessage.toLowerCase().includes('overloaded')) {
-        setError({
-          title: "Model Overloaded",
-          message: attempt > 0 ? `Server is still overloaded after ${attempt} retries.` : "Google's AI models are currently receiving a high volume of requests.",
-          action: "Take a breath, wait a few seconds, and try hitting generate again."
-        });
-      } else {
-        setError({
-          title: "Generation Failed",
-          message: errorMessage || "An unexpected error occurred during the image transformation process.",
-          action: "Please try again or try an alternative photo."
-        });
+      const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("API key is not configured.");
+
+      const ai = new GoogleGenAI({ apiKey });
+      let prompt = `AUTHENTIC PROFESSIONAL PORTRAIT: ${selectedStyle.prompt}. 
+      CRITICAL INSTRUCTIONS: 
+      1. MAINTAIN THE EXACT IDENTITY, face shape, features, and facial expression of the person in the source image. 
+      2. ONLY transform the lighting, background, and clothing to match the luxury executive style. 
+      3. OUTPUT exactly one binary image data as PNG.`;
+
+      const getImageData = (dataUrl: string) => {
+        const parts = dataUrl.split(',');
+        const mime = parts[0].match(/:(.*?);/)?.[1] || "image/jpeg";
+        return {
+          inlineData: {
+            data: parts[1],
+            mimeType: mime
+          }
+        };
+      };
+
+      const parts: any[] = [getImageData(image)];
+
+      if (customBackground) {
+        parts.push(getImageData(customBackground));
+        prompt += `\n\nUSE THE SECOND IMAGE AS THE SPECIFIC BACKGROUND. Seamlessly place the subject from the first image into the environment shown in the second image. Match the lighting of the subject to the new background for perfect realism.`;
+      } else if (selectedBackgroundId) {
+        const bg = BACKGROUNDS.find(b => b.id === selectedBackgroundId);
+        if (bg) {
+           prompt += `\n\nPlace the subject in a ${bg.name} environment. Maintain high-end studio lighting and professional depth of field.`;
+        }
       }
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            ...parts,
+            { text: prompt }
+          ]
+        }
+      });
+
+      let foundImage = false;
+      const responseParts = response.candidates?.[0]?.content?.parts || [];
+      for (const part of responseParts) {
+        if (part.inlineData) {
+          const resultUrl = `data:image/png;base64,${part.inlineData.data}`;
+          
+          // Optimize image to stay under 1MB Firestore limit
+          const optimizedUrl = await optimizeImage(resultUrl, 1000, 0.7) || resultUrl;
+          
+          setResultImage(optimizedUrl);
+          
+          // Add to history and sync with Firestore
+          if (currentUser) {
+            const headshotRef = collection(db, `users/${currentUser.uid}/headshots`);
+            await addDoc(headshotRef, {
+              image: optimizedUrl,
+              style: selectedStyle.id,
+              timestamp: serverTimestamp(),
+              userId: currentUser.uid
+            });
+            
+            // Deduct credit
+            if (!isAdmin) {
+              const userDocRef = doc(db, 'users', currentUser.uid);
+              await setDoc(userDocRef, { 
+                credits: (credits || 5) - 1,
+                updatedAt: serverTimestamp()
+              }, { merge: true });
+            }
+          }
+          
+          foundImage = true;
+          break;
+        }
+      }
+
+      if (!foundImage) throw new Error("AI failed to generate image. Please try again.");
+
+    } catch (err: any) {
+      console.error(err);
+      setError({ title: "Studio Busy", message: "We encountered a temporary error. Please try again in a few seconds." });
     } finally {
       setIsGenerating(false);
-      setRetryAttempt(0);
     }
   };
 
@@ -595,40 +1047,144 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-on-surface font-sans">
+    <div className="min-h-screen bg-[#fcfcfc] text-on-surface font-sans perspective-1000">
+      <AnimatePresence>
+        {showLimitsModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              className="bg-[#121212] border border-white/10 rounded-[32px] max-w-md w-full p-8 shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-emerald-500" />
+              
+              <div className="flex flex-col items-center text-center space-y-6">
+                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center">
+                  <Sparkles className="text-primary w-8 h-8" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-black text-white uppercase tracking-tight">Studio Usage Limits</h2>
+                  <p className="text-zinc-500 text-sm font-medium">Daily credits automatically refresh at midnight.</p>
+                </div>
+
+                <div className="w-full space-y-4">
+                  <LimitItem icon={<Scissors className="w-4 h-4" />} label="Background Removal" value="1 Credit/Day" color="emerald" />
+                  <LimitItem icon={<UserRound className="w-4 h-4" />} label="Face Swap" value="3 Credits/Day" color="blue" />
+                  <LimitItem icon={<Wand2 className="w-4 h-4" />} label="Gen Fill" value="5 Uses/Day" color="purple" />
+                </div>
+
+                <button 
+                  onClick={() => {
+                    setShowLimitsModal(false);
+                    localStorage.setItem('seen_limits_modal', 'true');
+                  }}
+                  className="w-full py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  I Understand
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {!currentUser && !isAuthModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-white flex flex-col items-center justify-center p-6"
+          >
+            <div className="max-w-md w-full text-center space-y-8">
+              <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <Camera className="text-primary w-10 h-10" />
+              </div>
+              <h1 className="text-4xl font-black tracking-tighter uppercase">Professional <span className="text-primary">Studio</span></h1>
+              <p className="text-zinc-500 font-medium leading-relaxed">
+                Transform your selfies into studio-quality professional headshots using the world's most advanced AI.
+              </p>
+              
+              <div className="grid gap-4 mt-8">
+                <button 
+                  onClick={() => {
+                    setAuthMode('login');
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="w-full py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  Sign In to Start
+                </button>
+                <div className="flex items-center gap-4">
+                  <div className="h-[1px] flex-1 bg-zinc-100" />
+                  <span className="text-[10px] uppercase font-black text-zinc-300 tracking-widest">or</span>
+                  <div className="h-[1px] flex-1 bg-zinc-100" />
+                </div>
+                <button 
+                  onClick={() => {
+                    setAuthMode('signup');
+                    setIsAuthModalOpen(true);
+                  }}
+                  className="w-full py-4 bg-white border border-zinc-100 text-on-surface rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] hover:bg-zinc-50 transition-all"
+                >
+                  Create Account
+                </button>
+              </div>
+
+              <div className="pt-12 grid grid-cols-3 gap-6 opacity-40 grayscale">
+                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop" className="rounded-xl" />
+                <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&h=100&fit=crop" className="rounded-xl" />
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop" className="rounded-xl" />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* TopAppBar */}
-      <header className="bg-white/70 backdrop-blur-3xl sticky top-0 z-50 shadow-[0px_20px_40px_rgba(0,109,54,0.06)]">
+      <header className="bg-white/70 backdrop-blur-3xl sticky top-0 z-50 shadow-[0px_20px_40px_rgba(0,109,54,0.06)] border-b border-zinc-100">
         <div className="flex justify-between items-center w-full px-6 py-4 max-w-7xl mx-auto">
-          <div className="flex items-center gap-3 group">
-            <Camera className="text-primary text-3xl" />
-            <span className="text-2xl font-extrabold tracking-tighter text-primary font-headline">Headshot Pro</span>
+          <div className="flex items-center gap-3 group cursor-pointer" onClick={() => setActiveTab('generator')}>
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center group-hover:rotate-12 transition-transform">
+              <Camera className="text-primary w-6 h-6" />
+            </div>
+            <span className="text-2xl font-black tracking-tighter text-on-surface font-headline uppercase">Portrait Studio <span className="text-primary italic">3D</span></span>
           </div>
           
-          <nav className="hidden md:flex items-center gap-8">
-            <button 
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="text-primary font-bold border-b-2 border-primary text-sm font-medium py-1"
-            >
-              Studio
-            </button>
-            <button 
-              onClick={() => document.getElementById('gallery-section')?.scrollIntoView({ behavior: 'smooth' })}
-              className="text-zinc-600 hover:text-primary text-sm font-medium transition-all duration-300"
-            >
-              History
-            </button>
-            <button 
-              onClick={() => {
-                if (currentUser) {
-                  setShowPricing(true);
-                } else {
-                  setIsAuthModalOpen(true);
-                }
-              }}
-              className="text-zinc-600 hover:text-primary text-sm font-medium transition-all duration-300"
-            >
-              Credits {credits !== null && `(${credits})`}
-            </button>
+          <nav className="hidden lg:flex items-center gap-10 relative">
+            {[
+              { id: 'generator', label: 'Studio' },
+              { id: 'editor', label: 'Elite Editor' },
+              { id: 'gallery', label: 'Vault' },
+              ...(isAdmin ? [{ id: 'admin', label: 'Admins' }] : []),
+              { id: 'pricing', label: 'Credits' }
+            ].map(tab => (
+              <button 
+                key={`top-tab-${tab.id}`}
+                onClick={() => {
+                  if (tab.id === 'pricing') {
+                    if (currentUser) setShowPricing(true);
+                    else setIsAuthModalOpen(true);
+                    return;
+                  }
+                  setActiveTab(tab.id as any);
+                }}
+                className={`group relative py-2 font-black text-[11px] uppercase tracking-[0.2em] transition-all ${activeTab === tab.id ? 'text-primary' : 'text-zinc-500 hover:text-on-surface'}`}
+              >
+                {tab.label}
+                {activeTab === tab.id && (
+                  <motion.div 
+                    layoutId="active_tab_line"
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary"
+                    transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+              </button>
+            ))}
           </nav>
 
           <div className="flex items-center gap-4">
@@ -704,32 +1260,68 @@ export default function App() {
                 <p className="text-zinc-500 text-lg">Professional headshots shouldn't cost a fortune. Select a plan to continue.</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {/* Starter */}
-                <div className="bg-white p-8 rounded-[2rem] border border-neutral-200 flex flex-col items-center text-center shadow-sm hover:shadow-xl transition-all h-full">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Free Tier */}
+                <div className="bg-white p-6 sm:p-8 rounded-[2rem] border border-neutral-200 flex flex-col items-center text-center shadow-sm hover:shadow-xl transition-all h-full">
                   <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-6">
                     <Sparkles className="w-8 h-8 text-blue-500" />
                   </div>
-                  <h3 className="text-xl font-bold mb-2">Starter</h3>
+                  <h3 className="text-xl font-bold mb-2">Free</h3>
                   <div className="mb-4">
-                    <span className="text-4xl font-black">₹99</span>
+                    <span className="text-4xl font-black">₹0</span>
+                    <span className="text-zinc-400 text-sm ml-1 font-bold">/lifetime</span>
                   </div>
                   <ul className="space-y-3 mb-8 text-zinc-600 text-sm">
-                    <li className="flex items-center gap-2 justify-center"><CheckCircle2 className="w-4 h-4 text-primary" /> 3 High-Quality Photos</li>
-                    <li className="flex items-center gap-2 justify-center"><CheckCircle2 className="w-4 h-4 text-primary" /> All Styles Available</li>
-                    <li className="flex items-center gap-2 justify-center"><CheckCircle2 className="w-4 h-4 text-primary" /> Lifetime History</li>
+                    <li className="flex items-center gap-2 justify-center"><CheckCircle2 className="w-4 h-4 text-primary" /> 3 Elite Portraits</li>
+                    <li className="flex items-center gap-2 justify-center"><CheckCircle2 className="w-4 h-4 text-primary" /> Multi-Source Tech</li>
+                    <li className="flex items-center gap-2 justify-center"><CheckCircle2 className="w-4 h-4 text-primary" /> Full Commercial Rights</li>
                   </ul>
                   <button 
-                    onClick={() => {
-                      // Mock purchase
+                    onClick={async () => {
                       if (currentUser) {
-                        setDoc(doc(db, 'users', currentUser.uid), { credits: (credits ?? 0) + 3 }, { merge: true });
-                        setShowPricing(false);
+                        try {
+                          const userDocRef = doc(db, 'users', currentUser.uid);
+                          const snap = await getDoc(userDocRef);
+                          if (!snap.exists()) {
+                            await setDoc(userDocRef, { 
+                              uid: currentUser.uid,
+                              email: currentUser.email,
+                              displayName: currentUser.displayName,
+                              photoURL: currentUser.photoURL,
+                              credits: 3,
+                              role: 'user',
+                              status: 'active',
+                              createdAt: serverTimestamp(),
+                              updatedAt: serverTimestamp()
+                            });
+                          } else {
+                            // If user exists, we only set credits to 3 if they have 0 and haven't claimed?
+                            // For simplicity, let's just allow them to reset to 3 if they have 0, 
+                            // OR just say it's claimed.
+                            const data = snap.data();
+                            if ((data.credits || 0) <= 0) {
+                              await setDoc(userDocRef, { 
+                                credits: 3,
+                                updatedAt: serverTimestamp()
+                              }, { merge: true });
+                            } else {
+                              setError({
+                                title: "Plan Active",
+                                message: "Your Elite Free Tier is already active with remaining credits."
+                              });
+                            }
+                          }
+                          setShowPricing(false);
+                        } catch (err) {
+                          handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}`);
+                        }
+                      } else {
+                        setIsAuthModalOpen(true);
                       }
                     }}
-                    className="mt-auto w-full py-4 rounded-2xl bg-zinc-900 text-white font-bold text-sm tracking-wide"
+                    className="mt-auto w-full py-4 rounded-2xl bg-primary text-white font-bold text-sm tracking-wide"
                   >
-                    Select Plan
+                    Claim Free Tier
                   </button>
                 </div>
 
@@ -752,14 +1344,14 @@ export default function App() {
                   </ul>
                   <button 
                     onClick={() => {
-                      if (currentUser) {
-                        setDoc(doc(db, 'users', currentUser.uid), { credits: (credits ?? 0) + 30 }, { merge: true });
-                        setShowPricing(false);
-                      }
+                      setError({
+                        title: "Payment Portal Offline",
+                        message: "The Professional payment gateway is currently under maintenance. Please try again later or use the Free tier."
+                      });
                     }}
                     className="mt-auto w-full py-4 rounded-2xl bg-white text-primary font-bold text-sm tracking-wide shadow-lg"
                   >
-                    Get 30 Photos
+                    Upgrade to Pro
                   </button>
                 </div>
 
@@ -780,14 +1372,14 @@ export default function App() {
                   </ul>
                   <button 
                      onClick={() => {
-                      if (currentUser) {
-                        setDoc(doc(db, 'users', currentUser.uid), { credits: (credits ?? 0) + 120 }, { merge: true });
-                        setShowPricing(false);
-                      }
+                      setError({
+                        title: "Enterprise Plan",
+                        message: "Please contact our sales team at business@portraitstudio3d.com for dedicated enterprise access."
+                      });
                     }}
                     className="mt-auto w-full py-4 rounded-2xl bg-zinc-900 text-white font-bold text-sm tracking-wide"
                   >
-                    Upgrade Monthly
+                    Contact Sales
                   </button>
                 </div>
               </div>
@@ -1086,7 +1678,7 @@ export default function App() {
                         { label: '16:9 (Wide)', value: 16/9 }
                       ].map((ratio) => (
                         <button
-                          key={ratio.label}
+                          key={`aspect-ratio-${ratio.label}`}
                           onClick={() => setAspectRatio(ratio.value)}
                           className={`px-3 py-1.5 rounded-lg text-[10px] uppercase font-bold transition-all border tracking-wider
                             ${aspectRatio === ratio.value 
@@ -1135,27 +1727,161 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="max-w-7xl mx-auto px-6 pt-12 pb-32">
-        {/* Section 1: Minimalist Upload */}
-        <section className="mb-20 text-center">
-          <h1 className="font-headline text-5xl md:text-6xl font-bold tracking-tight text-on-background mb-6">
-            Elevate your <span className="text-gradient-emerald">professional identity.</span>
-          </h1>
-          <p className="text-zinc-500 max-w-2xl mx-auto mb-10 text-lg">
-            Upload a single portrait and let our AI master photographers craft your perfect headshot in seconds.
-          </p>
-          
-          <div className="max-w-3xl mx-auto">
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-primary-container/20 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`relative rounded-2xl border-2 border-dashed p-12 transition-all duration-300 cursor-pointer
-                  ${image ? 'bg-surface-container border-primary' : isDragging ? 'bg-emerald-50 border-primary scale-[1.02] ring-4 ring-emerald-500/10' : 'bg-surface-container-low border-outline-variant hover:bg-surface-container hover:border-primary'}`}
-              >
+      <main className="max-w-7xl mx-auto px-6 py-12 min-h-[70vh]">
+        <AnimatePresence mode="wait">
+          {activeTab === 'admin' && isAdmin ? (
+            <div key="admin-view">
+              <AdminDashboard setError={setError} />
+            </div>
+          ) : activeTab === 'editor' ? (
+            <motion.div
+              key="editor-view"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-[120]"
+            >
+              <AdvancedEditor 
+                onBack={() => setActiveTab('generator')} 
+                initialImage={resultImage || (history.length > 0 ? history[0].image : null)} 
+              />
+            </motion.div>
+          ) : activeTab === 'gallery' ? (
+            <motion.div
+              key="gallery-view"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-12"
+            >
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-zinc-100 pb-12">
+                 <div className="space-y-2">
+                    <h2 className="text-5xl font-black uppercase tracking-tighter italic leading-none">Studio <span className="text-primary italic">Vault</span></h2>
+                    <p className="text-zinc-500 font-medium">Revisit and refine your professional transformations.</p>
+                 </div>
+                 <div className="flex items-center gap-4">
+                    <div className="bg-zinc-50 border border-zinc-100 px-6 py-3 rounded-2xl flex items-center gap-3">
+                       <ImageIcon className="w-5 h-5 text-primary" />
+                       <span className="text-[11px] font-black uppercase tracking-widest text-on-surface">{history.length} Generations</span>
+                    </div>
+                 </div>
+              </div>
+
+              {history.length === 0 ? (
+                <div className="py-40 text-center border-2 border-dashed border-zinc-100 rounded-[3.5rem] bg-zinc-50/30">
+                   <div className="w-24 h-24 bg-white rounded-[2rem] shadow-2xl flex items-center justify-center mx-auto mb-8 border border-zinc-100">
+                     <ImageIcon className="w-10 h-10 text-zinc-200" />
+                   </div>
+                   <h3 className="text-2xl font-bold mb-3 tracking-tight">The vault is currently empty</h3>
+                   <p className="text-zinc-400 font-medium max-w-xs mx-auto text-sm leading-relaxed">Your professional journey starts with your first generation. Head back to the studio to begin.</p>
+                   <button 
+                     onClick={() => setActiveTab('generator')} 
+                     className="mt-10 px-10 py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+                   >
+                     Direct to Studio
+                   </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+                  {history.map((item, i) => (
+                    <motion.div 
+                      key={`history-item-${item.id || i}`}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="group relative aspect-[4/5] rounded-[2.5rem] overflow-hidden bg-zinc-100 shadow-2xl border border-white/5 cursor-pointer"
+                    >
+                      <img src={item.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt="Generated" />
+                      <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col items-center justify-center gap-6 backdrop-blur-md">
+                         <div className="flex gap-4">
+                           <button 
+                             onClick={() => restoreFromHistory(item)}
+                             className="bg-white text-on-surface p-4 rounded-2xl shadow-xl hover:scale-110 active:scale-90 transition-all"
+                             title="Full View"
+                           >
+                             <Eye className="w-6 h-6" />
+                           </button>
+                           <button 
+                             onClick={() => {
+                               setResultImage(item.image);
+                               setActiveTab('editor');
+                             }}
+                             className="bg-primary text-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-400 transition-all shadow-xl shadow-primary/20"
+                           >
+                             Open Editor
+                           </button>
+                         </div>
+                         <button 
+                            onClick={(e) => deleteFromHistory(item.id, e)}
+                            className="bg-white/10 hover:bg-red-500 text-white px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] transition-all"
+                         >
+                           Remove from vault
+                         </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="generator-view"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <section className="mb-20 text-center relative pt-12 pb-24 overflow-hidden">
+                {/* 3D Floating Decorations */}
+                <motion.div 
+                  animate={{ 
+                    y: [0, -20, 0],
+                    rotate: [0, 10, 0]
+                  }}
+                  transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute top-0 -left-10 w-24 h-24 bg-primary/5 rounded-full blur-2xl" 
+                />
+                <motion.div 
+                  animate={{ 
+                    y: [0, 20, 0],
+                    rotate: [0, -10, 0]
+                  }}
+                  transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                  className="absolute bottom-0 -right-10 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl" 
+                />
+
+                <div className="relative z-10">
+                  <motion.div 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="mb-8 inline-flex items-center gap-2 px-4 py-1.5 bg-zinc-900 rounded-full shadow-2xl mx-auto"
+                  >
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <span className="text-[10px] font-black text-white uppercase tracking-[0.3em]">AI GEN 3.0 Elite</span>
+                  </motion.div>
+                  
+                  <h1 className="font-headline text-6xl md:text-8xl font-black tracking-tighter text-on-background mb-8 leading-[0.9]">
+                    PROFESSIONAL<br />
+                    <span className="text-gradient-emerald">IDENTITY.</span>
+                  </h1>
+                  
+                  <p className="text-zinc-500 max-w-xl mx-auto mb-16 text-lg font-medium leading-relaxed font-sans">
+                    Transform your casual selfies into studio-grade executive portraits with the power of SnapPro’s neural engine.
+                  </p>
+                
+                  <div className="max-w-3xl mx-auto relative group">
+                    {/* 3D Tilt Sandbox */}
+                    <motion.div 
+                      onMouseMove={handleMouse}
+                      onMouseLeave={handleMouseLeave}
+                      style={{ rotateX, rotateY, perspective: 1000 }}
+                      className="mx-auto w-full aspect-[16/9] relative cursor-crosshair"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-purple-500/10 rounded-[2.5rem] -rotate-2 scale-[1.02] blur-xl group-hover:scale-[1.05] transition-transform duration-700" />
+                      <div className="relative bg-white border border-zinc-100 rounded-[2.5rem] shadow-2xl h-full flex flex-col items-center justify-center p-12 overflow-hidden">
+                {/* Decorative Grid */}
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
+                  style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '50px 50px' }} 
+                />
                 <input 
                   type="file" 
                   ref={fileInputRef} 
@@ -1164,202 +1890,99 @@ export default function App() {
                   className="hidden" 
                 />
                 
-                <div className="flex flex-col items-center">
-                  {image ? (
-                    <div className="flex flex-col items-center w-full max-w-lg">
-                      <div 
-                        className="relative rounded-2xl overflow-hidden shadow-2xl mb-8 border-4 border-white transition-all duration-500 bg-surface-container"
-                        style={{ 
-                          width: '192px', // w-48
-                          aspectRatio: aspectRatio.toString(),
-                          maxHeight: '240px' 
-                        }}
+                {!image && !isCameraActive ? (
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    className={`w-full h-full border-4 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all duration-500 cursor-pointer
+                      ${isDragging ? 'border-primary bg-primary/5' : 'border-zinc-100 hover:border-primary/30'}
+                    `}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                  >
+                    <div className="w-24 h-24 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 shadow-inner">
+                      <Upload className="w-10 h-10 text-primary" />
+                    </div>
+                    <h3 className="font-headline text-2xl font-black mb-2 tracking-tight">Drop your portrait here</h3>
+                    <p className="text-zinc-400 text-sm font-medium mb-8">JPG, PNG, WebP up to 10MB</p>
+                    
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-8 py-3 bg-zinc-900 text-white rounded-full text-xs font-black uppercase tracking-widest hover:bg-black transition-colors shadow-lg"
                       >
-                          <img 
-                            src={image} 
-                            alt="Preview" 
-                            className="w-full h-full object-cover transition-all" 
-                            style={{ 
-                              filter: `brightness(${(filters.brightness * filters.exposure) / 100}%) contrast(${filters.contrast}%) saturate(${filters.saturation}%)`
-                            }}
-                            referrerPolicy="no-referrer" 
-                          />
-                          {filters.vignette > 0 && (
-                            <div 
-                              className="absolute inset-0 pointer-events-none" 
-                              style={{ 
-                                background: `radial-gradient(circle, transparent 50%, rgba(0,0,0,${filters.vignette / 150}))` 
-                              }}
-                            />
-                          )}
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); reset(); }}
-                          className="absolute top-2 right-2 p-1.5 bg-white shadow-lg rounded-full hover:scale-110 transition-all text-neutral-600"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {/* Adjustment Suite */}
-                      <div className="w-full bg-white/50 backdrop-blur-md rounded-2xl p-6 border border-white/40 space-y-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-4">
-                            <h4 className="font-headline font-bold text-sm text-primary uppercase tracking-widest flex items-center gap-2">
-                              <Sparkles className="w-4 h-4" />
-                              Enhancement Suite
-                            </h4>
-                            
-                            {/* Master Toggle */}
-                            <label className="flex items-center gap-2 cursor-pointer group">
-                              <div className="relative">
-                                <input 
-                                  type="checkbox" 
-                                  className="sr-only peer" 
-                                  checked={isEnhanced}
-                                  onChange={() => setIsEnhanced(!isEnhanced)}
-                                />
-                                <div className="w-8 h-4 bg-neutral-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary"></div>
-                              </div>
-                              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight group-hover:text-primary transition-colors">Magic Enhance</span>
-                            </label>
-
-                            {/* 4K Upscaler Toggle */}
-                            <label className="flex items-center gap-2 cursor-pointer group border-l border-zinc-200 pl-4">
-                              <div className="relative">
-                                <input 
-                                  type="checkbox" 
-                                  className="sr-only peer" 
-                                  checked={isUpscaled}
-                                  onChange={() => setIsUpscaled(!isUpscaled)}
-                                />
-                                <div className="w-8 h-4 bg-neutral-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"></div>
-                              </div>
-                              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight group-hover:text-purple-600 transition-colors">4K Ultra HD</span>
-                            </label>
-                          </div>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setFilters({ 
-                              brightness: 100, 
-                              contrast: 100, 
-                              saturation: 100,
-                              exposure: 100,
-                              sharpen: 0,
-                              vignette: 0
-                            }); }}
-                            className="text-[10px] font-bold text-zinc-400 hover:text-primary transition-colors hover:underline"
-                          >
-                            Reset Adjustments
-                          </button>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
-                          <div className="space-y-1.5 font-sans">
-                            <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                              <span className="flex items-center gap-1"><Sparkles className="w-3 h-3"/> Brightness</span>
-                              <span className="text-primary">{filters.brightness}%</span>
-                            </div>
-                            <input 
-                              type="range" min="50" max="150" step="1"
-                              value={filters.brightness}
-                              onChange={(e) => { e.stopPropagation(); setFilters(f => ({ ...f, brightness: parseInt(e.target.value) })) }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full accent-primary h-1 bg-neutral-100 rounded-full appearance-none cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5 font-sans">
-                            <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                              <span className="flex items-center gap-1"><RefreshCw className="w-3 h-3"/> Contrast</span>
-                              <span className="text-primary">{filters.contrast}%</span>
-                            </div>
-                            <input 
-                              type="range" min="50" max="150" step="1"
-                              value={filters.contrast}
-                              onChange={(e) => { e.stopPropagation(); setFilters(f => ({ ...f, contrast: parseInt(e.target.value) })) }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full accent-primary h-1 bg-neutral-100 rounded-full appearance-none cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5 font-sans">
-                            <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                              <span className="flex items-center gap-1"><Folder className="w-3 h-3"/> Saturation</span>
-                              <span className="text-primary">{filters.saturation}%</span>
-                            </div>
-                            <input 
-                              type="range" min="0" max="200" step="1"
-                              value={filters.saturation}
-                              onChange={(e) => { e.stopPropagation(); setFilters(f => ({ ...f, saturation: parseInt(e.target.value) })) }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full accent-primary h-1 bg-neutral-100 rounded-full appearance-none cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5 font-sans">
-                            <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                              <span className="flex items-center gap-1"><Sparkles className="w-3 h-3"/> Exposure</span>
-                              <span className="text-primary">{filters.exposure}%</span>
-                            </div>
-                            <input 
-                              type="range" min="50" max="150" step="1"
-                              value={filters.exposure}
-                              onChange={(e) => { e.stopPropagation(); setFilters(f => ({ ...f, exposure: parseInt(e.target.value) })) }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full accent-emerald-500 h-1 bg-neutral-100 rounded-full appearance-none cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5 font-sans">
-                            <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                              <span className="flex items-center gap-1"><RefreshCw className="w-3 h-3"/> Sharpening</span>
-                              <span className="text-primary">{filters.sharpen}%</span>
-                            </div>
-                            <input 
-                              type="range" min="0" max="100" step="1"
-                              value={filters.sharpen}
-                              onChange={(e) => { e.stopPropagation(); setFilters(f => ({ ...f, sharpen: parseInt(e.target.value) })) }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full accent-blue-500 h-1 bg-neutral-100 rounded-full appearance-none cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5 font-sans">
-                            <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                              <span className="flex items-center gap-1"><Folder className="w-3 h-3"/> Vignette</span>
-                              <span className="text-primary">{filters.vignette}%</span>
-                            </div>
-                            <input 
-                              type="range" min="0" max="100" step="1"
-                              value={filters.vignette}
-                              onChange={(e) => { e.stopPropagation(); setFilters(f => ({ ...f, vignette: parseInt(e.target.value) })) }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full accent-neutral-800 h-1 bg-neutral-100 rounded-full appearance-none cursor-pointer"
-                            />
-                          </div>
-                        </div>
-                      </div>
+                        Select File
+                      </button>
+                      <button 
+                        onClick={startCamera}
+                        className="px-8 py-3 bg-primary text-white rounded-full text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-lg flex items-center gap-2"
+                      >
+                        <Camera className="w-4 h-4" />
+                        Take Photo
+                      </button>
                     </div>
-                  ) : (
-                    <div className="w-16 h-16 rounded-full bg-primary-container/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                      <Upload className="text-primary text-3xl" />
+                  </motion.div>
+                ) : isCameraActive ? (
+                  <div className="w-full h-full relative rounded-3xl overflow-hidden shadow-2xl bg-black">
+                    <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      muted
+                      playsInline 
+                      className="w-full h-full object-cover"
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                    
+                    <div className="absolute inset-x-0 bottom-8 flex justify-center gap-6">
+                      <button 
+                        onClick={stopCamera}
+                        className="px-6 py-3 bg-white/20 backdrop-blur-md text-white rounded-full text-xs font-bold border border-white/20 hover:bg-white/30 transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={takePhoto}
+                        className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-90 transition-all border-4 border-primary"
+                      >
+                        <div className="w-12 h-12 rounded-full border-2 border-primary/20" />
+                      </button>
                     </div>
-                  )}
-                  
-                  <h3 className="font-headline text-xl font-bold mb-2">
-                    {image ? 'Photo uploaded' : 'Drop your photo here'}
-                  </h3>
-                  <p className="text-sm text-zinc-500">PNG, JPG or WEBP (Max. 10MB)</p>
-                  
-                  {!image && (
-                    <button className="mt-6 bg-white border border-outline-variant px-8 py-3 rounded-full font-bold text-sm hover:bg-emerald-50 transition-colors">
-                      Browse Files
+                  </div>
+                ) : (
+                  <div className="w-full h-full relative rounded-3xl overflow-hidden shadow-2xl">
+                    <img src={image} className="w-full h-full object-cover" alt="Source" />
+                    <button 
+                      onClick={() => setImage(null)}
+                      className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md text-white rounded-full hover:bg-black transition-all"
+                    >
+                      <X className="w-5 h-5" />
                     </button>
-                  )}
-                </div>
+                    
+                    <div className="absolute inset-x-0 bottom-0 p-8 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-end">
+                       <div className="flex gap-4">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setShowCropper(true); }}
+                            className="p-3 bg-white/10 backdrop-blur-md text-white rounded-xl hover:bg-white/20 transition-all border border-white/10 shadow-lg"
+                          >
+                             <RefreshCw className="w-5 h-5" />
+                          </button>
+                       </div>
+                       <button 
+                         onClick={generateHeadshot}
+                         disabled={isGenerating}
+                         className="px-10 py-4 bg-primary text-white rounded-2xl font-black uppercase tracking-widest shadow-2xl shadow-emerald-500/40 hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+                       >
+                         {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5 transition-transform group-hover:rotate-12" />}
+                         {isGenerating ? 'Synthesizing...' : 'Generate 8K Headshot'}
+                       </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            </motion.div>
           </div>
-        </section>
+        </div>
+      </section>
 
         {/* Section 2: Theme Selection */}
         <section className="mb-20">
@@ -1372,10 +1995,10 @@ export default function App() {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 sm:gap-8">
             {STYLES.map((style) => (
               <div 
-                key={style.id}
+                key={`style-item-${style.id}`}
                 onClick={() => setSelectedStyle(style)}
                 className={`group relative bg-surface-container-lowest rounded-2xl p-4 shadow-[0px_20px_40px_rgba(0,109,54,0.04)] hover:shadow-xl transition-all duration-500 cursor-pointer overflow-hidden border-2
                   ${selectedStyle.id === style.id ? 'border-primary' : 'border-transparent hover:border-primary-container/30'}`}
@@ -1394,13 +2017,99 @@ export default function App() {
                 </div>
                 <div className="flex justify-between items-center">
                   <div>
-                    <h3 className="font-headline font-bold text-lg">{style.name}</h3>
-                    <p className="text-sm text-zinc-500">{style.description}</p>
+                    <h3 className="font-headline font-bold text-sm tracking-tight">{style.name}</h3>
+                    <p className="text-[10px] text-zinc-500">{style.description}</p>
                   </div>
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors shrink-0
                     ${selectedStyle.id === style.id ? 'border-primary' : 'border-outline-variant group-hover:border-primary'}`}>
-                    <div className={`w-3 h-3 rounded-full bg-primary transition-opacity
+                    <div className={`w-2.5 h-2.5 rounded-full bg-primary transition-opacity
                       ${selectedStyle.id === style.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Section 2.5: Background Selection */}
+        <section className="mb-20">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col gap-1">
+              <h2 className="font-headline text-2xl font-bold tracking-tight">Studio Backgrounds</h2>
+              <p className="text-sm text-zinc-500 font-medium tracking-tight">Choose a premium setting or upload your own.</p>
+            </div>
+            <div className="flex gap-2">
+               <button 
+                 onClick={() => {
+                  setSelectedBackgroundId(null);
+                  setCustomBackground(null);
+                 }}
+                 className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all
+                   ${!selectedBackgroundId ? 'bg-zinc-900 text-white shadow-lg' : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200'}`}
+               >
+                 Auto Generate
+               </button>
+            </div>
+          </div>
+          
+          <div className="flex gap-4 overflow-x-auto pb-8 scrollbar-hide -mx-2 px-2">
+            <input 
+              type="file" 
+              ref={bgInputRef} 
+              onChange={handleBackgroundUpload} 
+              accept="image/*" 
+              className="hidden" 
+            />
+            
+            {/* Custom Upload Card */}
+            <div 
+              onClick={() => bgInputRef.current?.click()}
+              className={`flex-shrink-0 w-44 group relative bg-surface-container-lowest rounded-2xl p-4 shadow-sm border-2 cursor-pointer overflow-hidden transition-all duration-500
+                ${selectedBackgroundId === 'custom' ? 'border-primary' : 'border-zinc-100 hover:border-primary/30'}`}
+            >
+              <div className="aspect-[4/5] rounded-xl overflow-hidden mb-4 relative bg-zinc-100 flex flex-col items-center justify-center gap-2 group-hover:bg-zinc-200 transition-colors">
+                {customBackground ? (
+                  <img src={customBackground} className="w-full h-full object-cover" alt="Custom" />
+                ) : (
+                  <>
+                    <CloudUpload className="w-8 h-8 text-zinc-300 group-hover:text-primary transition-colors" />
+                    <span className="text-[10px] font-black uppercase text-zinc-400">Upload Own</span>
+                  </>
+                )}
+              </div>
+              <div className="flex justify-between items-center">
+                 <h3 className="font-headline font-bold text-sm tracking-tight">{customBackground ? 'My Custom' : 'Custom'}</h3>
+                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors
+                    ${selectedBackgroundId === 'custom' ? 'border-primary' : 'border-outline-variant group-hover:border-primary'}`}>
+                    <div className={`w-2 h-2 rounded-full bg-primary transition-opacity
+                      ${selectedBackgroundId === 'custom' ? 'opacity-100' : 'opacity-0'}`}></div>
+                  </div>
+              </div>
+            </div>
+
+            {BACKGROUNDS.map((bg) => (
+              <div 
+                key={`bg-item-${bg.id}`}
+                onClick={() => {
+                  setSelectedBackgroundId(bg.id);
+                  setCustomBackground(null);
+                }}
+                className={`flex-shrink-0 w-44 group relative bg-surface-container-lowest rounded-2xl p-4 shadow-sm border-2 cursor-pointer overflow-hidden transition-all duration-500
+                  ${selectedBackgroundId === bg.id ? 'border-primary' : 'border-zinc-100 hover:border-primary/30'}`}
+              >
+                <div className="aspect-[4/5] rounded-xl overflow-hidden mb-4 relative">
+                  <img 
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                    alt={bg.name} 
+                    src={bg.image} 
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <h3 className="font-headline font-bold text-sm tracking-tight">{bg.name}</h3>
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors
+                    ${selectedBackgroundId === bg.id ? 'border-primary' : 'border-outline-variant group-hover:border-primary'}`}>
+                    <div className={`w-2 h-2 rounded-full bg-primary transition-opacity
+                      ${selectedBackgroundId === bg.id ? 'opacity-100' : 'opacity-0'}`}></div>
                   </div>
                 </div>
               </div>
@@ -1483,6 +2192,13 @@ export default function App() {
                       >
                         <Download className="w-5 h-5" />
                         Download PNG
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab('editor')}
+                        className="flex-1 min-w-[180px] bg-white text-primary border-2 border-primary/20 py-4 rounded-full font-bold hover:bg-emerald-50 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Settings2 className="w-5 h-5" />
+                        Refine in Editor
                       </button>
                       <motion.button 
                         whileHover={{ scale: 1.02 }}
@@ -1619,129 +2335,31 @@ export default function App() {
             </div>
           </div>
         </section>
-
-        {/* Studio Gallery Section */}
-        {history.length > 0 && (
-          <motion.div 
-            id="gallery-section"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mt-24 mb-12 px-6 md:px-12"
-          >
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-3xl font-headline font-bold text-on-surface">Your Studio Gallery</h2>
-                <p className="text-zinc-500 font-medium">Revisit and refine your previous masterpieces</p>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 rounded-full text-primary text-xs font-bold border border-emerald-100">
-                <Sparkles className="w-3.5 h-3.5" />
-                {history.length}/8 Slots Used
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-              {history.map((item) => (
-                <motion.div
-                  key={item.id}
-                  whileHover={{ y: -5 }}
-                  className="group relative cursor-pointer"
-                  onClick={() => restoreFromHistory(item)}
-                >
-                  <div className="aspect-[4/5] rounded-3xl overflow-hidden shadow-lg border-4 border-white bg-white transition-all group-hover:shadow-2xl ring-1 ring-black/5 relative">
-                    <img 
-                      src={item.image} 
-                      alt="History Item" 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                    />
-                    
-                    {/* Style/Filter Snapshot Badge */}
-                    <div className="absolute top-3 left-3 bg-white/70 backdrop-blur-md rounded-lg p-2 flex flex-col gap-1 border border-white/40 shadow-sm opacity-90 transition-opacity group-hover:opacity-100">
-                       <div className="flex items-center gap-1">
-                          <Sparkles className="w-2.5 h-2.5 text-primary" />
-                          <span className="text-[8px] font-bold uppercase tracking-tight text-on-surface">
-                            {STYLES.find(s => s.id === item.style)?.name}
-                          </span>
-                       </div>
-                       <div className="flex gap-0.5">
-                          {Object.entries(item.filters).map(([k, v]) => (
-                            v !== 100 && v !== 0 && (
-                              <div key={k} className="w-1 h-1 rounded-full bg-primary" title={`${k}: ${v}`} />
-                            )
-                          ))}
-                       </div>
-                    </div>
-                    
-                    {/* Hover Actions */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-sm">
-                       <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const link = document.createElement('a');
-                          link.href = item.image;
-                          link.download = `headshot-retry-${item.id}.png`;
-                          link.click();
-                        }}
-                        className="p-3 bg-white rounded-full text-on-surface hover:bg-primary hover:text-white transition-all shadow-xl hover:scale-110"
-                        title="Quick Download"
-                      >
-                        <Download className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={(e) => deleteFromHistory(item.id, e)}
-                        className="p-3 bg-white rounded-full text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl hover:scale-110"
-                        title="Delete from Gallery"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex justify-between items-start px-2">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-primary uppercase tracking-[0.2em]">
-                        {STYLES.find(s => s.id === item.style)?.name || 'Custom'}
-                      </p>
-                      <p className="text-xs text-zinc-400 font-medium">
-                        {(() => {
-                          const date = item.timestamp?.toDate ? item.timestamp.toDate() : new Date(item.timestamp);
-                          return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                        })()}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </main>
+      </motion.div>
+    )}
+  </AnimatePresence>
+</main>
 
       {/* BottomNavBar (Mobile) */}
       <nav className="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center pb-8 px-4 md:hidden">
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md rounded-full bg-white/60 backdrop-blur-2xl shadow-2xl shadow-emerald-900/10 flex justify-around items-center py-2 px-4 border border-white/20">
-          <a className="flex flex-col items-center justify-center bg-primary text-white rounded-full p-3 scale-110 -translate-y-2 shadow-lg shadow-emerald-500/40" href="#">
+          <a className="flex flex-col items-center justify-center bg-primary text-white rounded-full p-3 scale-110 -translate-y-2 shadow-lg shadow-emerald-500/40" href="#" onClick={(e) => { e.preventDefault(); setActiveTab('generator'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
             <Sparkles className="w-5 h-5" />
             <span className="font-headline text-[10px] uppercase tracking-widest font-bold mt-1">Studio</span>
           </a>
           <button 
-            onClick={() => document.getElementById('gallery-section')?.scrollIntoView({ behavior: 'smooth' })}
-            className="flex flex-col items-center justify-center text-zinc-500 p-2 hover:text-primary transition-colors"
+            onClick={() => { setActiveTab('editor'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            className={`flex flex-col items-center justify-center p-2 transition-colors ${activeTab === 'editor' ? 'text-primary' : 'text-zinc-500'}`}
           >
-            <Folder className="w-5 h-5" />
-            <span className="font-headline text-[10px] uppercase tracking-widest font-bold mt-1">History</span>
+            <Settings className="w-5 h-5" />
+            <span className="font-headline text-[10px] uppercase tracking-widest font-bold mt-1">Editor</span>
           </button>
           <button 
-            onClick={() => {
-              if (currentUser) {
-                setShowPricing(true);
-              } else {
-                setIsAuthModalOpen(true);
-              }
-            }}
-            className="flex flex-col items-center justify-center text-zinc-500 p-2 hover:text-primary transition-colors"
+            onClick={() => { setActiveTab('gallery'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            className={`flex flex-col items-center justify-center p-2 transition-colors ${activeTab === 'gallery' ? 'text-primary' : 'text-zinc-500'}`}
           >
-            <CreditCard className="w-5 h-5" />
-            <span className="font-headline text-[10px] uppercase tracking-widest font-bold mt-1">Credits</span>
+            <Folder className="w-5 h-5" />
+            <span className="font-headline text-[10px] uppercase tracking-widest font-bold mt-1">Vault</span>
           </button>
           {!currentUser && (
             <button 
@@ -1761,6 +2379,19 @@ export default function App() {
               <span className="font-headline text-[10px] uppercase tracking-widest font-bold mt-1">Exit</span>
             </button>
           )}
+          <button 
+            onClick={() => {
+              if (currentUser) {
+                setShowPricing(true);
+              } else {
+                setIsAuthModalOpen(true);
+              }
+            }}
+            className="flex flex-col items-center justify-center text-zinc-500 p-2 hover:text-primary transition-colors"
+          >
+            <CreditCard className="w-5 h-5" />
+            <span className="font-headline text-[10px] uppercase tracking-widest font-bold mt-1">Credits</span>
+          </button>
           <button 
             onClick={() => setShowKeyInput(true)}
             className="flex flex-col items-center justify-center text-zinc-500 p-2 hover:text-primary transition-colors"

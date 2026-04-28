@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt']) 
+        && data.keys().size() <= 6
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() <= 256
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function isValidHeadshot(data) {
+      return data.keys().hasAll(['userId', 'imageUrl', 'createdAt'])
+        && data.keys().size() <= 5
+        && data.userId == request.auth.uid
+        && data.imageUrl is string && data.imageUrl.size() <= 2048
+        && data.prompt is string && data.prompt.size() <= 5000
+        && data.createdAt == request.time;
+    }
+
+    // --- Collection Routes ---
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) 
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt'])
+        && incoming().updatedAt == request.time;
+    }
+
+    match /users/{userId}/headshots/{headshotId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidHeadshot(incoming());
+      allow delete: if isOwner(userId);
+    }
+  }
+}

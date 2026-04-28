@@ -1,5 +1,5 @@
 {
-  "name": "ProHeadshot AI",
-  "description": "Transform your casual selfies into professional business headshots using AI.",
-  "requestFramePermissions": []
+  "name": "Portrait Studio 3D",
+  "description": "Premium 3D AI Headshot & Portrait Studio | रचनात्मक एआई हेडशॉट जनरेटर - Create production-ready professional portraits with a creative 3D interface.",
+  "requestFramePermissions": ["camera"]
 }

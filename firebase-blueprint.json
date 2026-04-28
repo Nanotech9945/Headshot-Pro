@@ -1,42 +1,44 @@
 {
   "entities": {
-    "user": {
+    "User": {
       "title": "User",
-      "description": "Represents a user in the system.",
+      "description": "User profile information",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "displayName": { "type": "string" },
-        "photoURL": { "type": "string" },
-        "credits": { "type": "number", "description": "Number of headshot generations remaining" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "photoURL": { "type": "string", "description": "User profile photo URL" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation time" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Profile last update time" }
       },
       "required": ["uid", "email"]
     },
-    "generation": {
-      "title": "Generation",
-      "description": "A generated headshot result.",
+    "Headshot": {
+      "title": "Headshot",
+      "description": "Generated headshot record",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
-        "image": { "type": "string", "description": "Base64 or URL of the image" },
-        "style": { "type": "string" },
-        "aspectRatio": { "type": "number" },
-        "filters": { "type": "object" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "userId": { "type": "string", "description": "Owner of the headshot" },
+        "image": { "type": "string", "description": "Base64 or URL of the generated headshot" },
+        "style": { "type": "string", "description": "ID of the selected style" },
+        "filters": { "type": "object", "description": "Applied image filters" },
+        "upscaled": { "type": "boolean" },
+        "enhanced": { "type": "boolean" },
+        "aspectRatio": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Generation time" }
       },
       "required": ["userId", "image", "timestamp"]
     }
   },
   "firestore": {
-    "users/{userId}": {
-      "schema": "user",
-      "description": "User profile data"
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User document"
     },
-    "users/{userId}/generations/{generationId}": {
-      "schema": "generation",
-      "description": "User's headshot generation history"
+    "/users/{userId}/headshots/{headshotId}": {
+      "schema": "Headshot",
+      "description": "User's generated headshots"
     }
   }
 }
